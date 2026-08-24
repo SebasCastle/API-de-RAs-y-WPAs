@@ -1,0 +1,3 @@
+# Una reservacion por linea. Las lineas con # se ignoran.
+22974515MX4
+23175201US0
