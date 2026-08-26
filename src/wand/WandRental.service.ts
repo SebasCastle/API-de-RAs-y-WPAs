@@ -1,17 +1,19 @@
-/* eslint-disable prettier/prettier */
 import {
+  BadGatewayException,
   BadRequestException,
   Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { WandRA } from './entities/wand.entity';
-import { AuthService } from './auth/auth.service';
-import { SessionService } from './auth/session.service';
-import { RA } from './interface/ra.interface';
-import { RentalMapper } from './mapper/RentalMapper';
+} from "@nestjs/common";
+import { InjectModel } from "@nestjs/mongoose";
+import { Model } from "mongoose";
+import { AuthService } from "./auth/auth.service";
+import { SessionService } from "./auth/session.service";
+import {
+  PasswordRotationResult,
+  WandPasswordRotationService,
+} from "./auth/wand-password-rotation.service";
+import { WandRA } from "./entities/wand.entity";
+import { RA } from "./interface/ra.interface";
+import { RentalMapper } from "./mapper/RentalMapper";
 
 @Injectable()
 export class WandRentalService {
@@ -20,73 +22,75 @@ export class WandRentalService {
     private readonly wandRaModel: Model<WandRA>,
     private readonly authService: AuthService,
     private readonly sessionService: SessionService,
+    private readonly passwordRotationService: WandPasswordRotationService,
   ) {}
 
-  //verificar el login de wand, si no esta logueado, loguear y guardar el agentId en la session
-  login() {
+  async login() {
+    await this.passwordRotationService.rotateIfDue();
+
     return this.authService.login();
   }
 
+  rotatePassword(force = false): Promise<PasswordRotationResult> {
+    return this.passwordRotationService.rotateIfDue({ force });
+  }
 
-  //buscar y obtener el RA desde WAND
+  getPasswordRotationStatus(): PasswordRotationResult {
+    return this.passwordRotationService.getRotationStatus();
+  }
+
   async findOne(ra: string): Promise<RA> {
+    await this.passwordRotationService.rotateIfDue();
+    await this.authService.ensureLogin();
+
     const agentId = this.sessionService.getAgentId();
+
     if (!agentId) {
-      
-      await this.login();
+      throw new BadGatewayException(
+        "No hay agentId activo para consultar WAND.",
+      );
     }
-    // await this.authService.ensureLogin();
 
     const body = new URLSearchParams({
       raNo: ra,
-      wizardNo: '',
-      discountNo: '',
-      haveCustInfo: 'false',
-      fromCache: 'false',
+      wizardNo: "",
+      discountNo: "",
+      haveCustInfo: "false",
+      fromCache: "false",
     });
 
-    // Realizar la solicitud POST a WAND con los parámetros y encabezados necesarios
     const response = await this.sessionService
       .getClient()
-      .post<RA>('/wand/rental', body.toString(), {
+      .post<RA>("/wand/rental", body.toString(), {
         params: {
-          brand: 'Avis',
-          brandCode: 'A',
+          brand: "Avis",
+          brandCode: "A",
           agentId,
-          selectedModule: 'DISPLAY-RENTAL',
+          selectedModule: "DISPLAY-RENTAL",
           stationMnemonic: this.sessionService.getStation(),
         },
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
         },
       });
 
     if (!response.data) {
-      // throw new BadGatewayException(
-      //   'WAND devolvió una respuesta rental vacía.',
-      // );
-      return response.data;
+      throw new BadGatewayException(
+        "WAND devolvió una respuesta rental vacía.",
+      );
     }
-      const RA = RentalMapper.toDomain(response.data);
-      const existingRA = await this.wandRaModel.findOne({
-        raNum: response.data.rentalData.raNum,
-      });
-      if (!existingRA) {
-        await this.wandRaModel.create(RA.rentalData);
-      }
 
-      return RA;
+    const rental = RentalMapper.toDomain(response.data);
+    const existingRA = await this.wandRaModel.findOne({
+      raNum: response.data.rentalData.raNum,
+    });
+
+    if (!existingRA) {
+      await this.wandRaModel.create(rental.rentalData);
+    }
+
+    return rental;
   }
-
-  // async findRes(res: string){
-  //   const agentId = this.sessionService.getAgentId();
-  //   if (!agentId) {
-  //     await this.login();
-  //   }
-  //   await this.authService.ensureLogin();
-
-  // }
-
 
   async remove(_id: string): Promise<void> {
     const { deletedCount } = await this.wandRaModel.deleteOne({ _id });
@@ -95,14 +99,4 @@ export class WandRentalService {
       throw new BadRequestException(`RA with id "${_id}" not found`);
     }
   }
-
-  private handleExcepotions (error: any){
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          if(error.code === 11000){
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            throw new NotFoundException(`The RA exist in db ${ JSON.stringify(error.keyValue) }`)
-          }
-          console.error(error);
-          throw new InternalServerErrorException(`Review server logs for more info`)
-    }
 }

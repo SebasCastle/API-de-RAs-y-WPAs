@@ -41,11 +41,11 @@ export class RentalMapper {
 
         resNum: rental.rentalData.resNum,
 
-        outString: rental.rentalData.outString,
+        // outString: rental.rentalData.outString,
 
         totalChargesRateAmt: rental.rentalData.totalChargesRateAmt,
 
-        // outString: RentalMapper.BuscarNetCharges(rental.rentalData.outString),
+        outString: RentalMapper.BuscarNetCharges(rental.rentalData.outString),
 
         vehicleExchange: rental.rentalData.vehicleExchange,
 
@@ -71,8 +71,10 @@ export class RentalMapper {
       },
 
       qvData: {
-        qvDiEstTotal: rental.qvData.qvDiEstTotal,
-        qvDiEstTotalClosed: rental.qvData.qvDiEstTotalClosed,
+        qvDiEstTotal: RentalMapper.money(rental.qvData.qvDiEstTotal),
+        qvDiEstTotalClosed: RentalMapper.money(
+          rental.qvData.qvDiEstTotalClosed,
+        ),
       },
 
       req: {
@@ -87,10 +89,10 @@ export class RentalMapper {
     };
   }
 
-  private static money(value: string | null | undefined): number {
-    if (!value) return 0;
+  private static money(value: string | null | undefined): string {
+    if (!value) return "0";
 
-    return Number(
+    return String(
       value
 
         .replace(/[A-Z]/g, "")
@@ -102,11 +104,11 @@ export class RentalMapper {
   }
 
   private static BuscarNetCharges(outString: string | undefined): string {
-    if (!outString) return "NO_FOUND";
+    if (!outString) return "0.00";
 
     const regex = /NET\s+CHARGES\s*([\d,]+\.\d{2})/i;
     const match = outString.match(regex);
 
-    return match ? match[1].replace(/,/g, "") : "NO_FOUND";
+    return match ? match[1].replace(/,/g, "") : "0.00";
   }
 }

@@ -1,15 +1,18 @@
-import { underline } from "colors";
-import { CorsOptions } from "cors";
+import { CorsOptions } from "@nestjs/common/interfaces/external/cors-options.interface";
 
 export const corsConfig: CorsOptions = {
-    origin(requestOrigin, callback) {
-        const whiteList = [process.env.FRONTEND_URL]
+  origin(requestOrigin, callback) {
+    const whiteList = [process.env.FRONTEND_URL];
 
-        if(process.argv[2] === '--api'){
-            whiteList.push(undefined)
-        }
+    if (process.argv[2] === "--api") {
+      whiteList.push(undefined);
+    }
 
-        whiteList.includes(requestOrigin)?callback(null, true):callback(new Error('Error CORS'))
-    },
+    if (whiteList.includes(requestOrigin)) {
+      callback(null, true);
+      return;
+    }
 
-}
+    callback(new Error("Error CORS"));
+  },
+};

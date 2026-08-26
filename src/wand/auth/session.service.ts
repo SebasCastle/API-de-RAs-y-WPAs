@@ -1,8 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import axios, { AxiosInstance, AxiosResponse } from "axios";
-import { AuthService } from "./auth.service";
 
-const WAND_BASE_URL = "https://wand-avis.prod.avisbudget.com";
+export const WAND_BASE_URL = "https://wand-avis.prod.avisbudget.com";
 const SESSION_TTL_MS = 20 * 60 * 1000;
 
 @Injectable()
@@ -13,8 +12,6 @@ export class SessionService {
   private lastLogin: Date | null = null;
   private station = "QU4";
   private agentId: string | null = null;
-  private lastActivity: number | null = null;
-  private readonly SESSION_TIMEOUT = 4 * 60 * 1000; // 4 minutos
 
   constructor() {
     this.client = axios.create({
@@ -57,8 +54,6 @@ export class SessionService {
       },
     );
   }
-
-  //metodos
 
   getClient(): AxiosInstance {
     return this.client;
@@ -105,14 +100,6 @@ export class SessionService {
     return [...this.cookies.entries()].map(
       ([name, value]) => `${name}=${value}`,
     );
-  }
-
-  async ensureSession(authService: AuthService) {
-    if (this.isExpired()) {
-      this.clear();
-      await authService.login();
-    }
-    this.touch();
   }
 
   updateCookies(
@@ -170,29 +157,16 @@ export class SessionService {
     };
   }
 
-  // Actualiza la marca de tiempo de la última actividad
-  touch() {
-    this.lastActivity = Date.now();
-  }
-
-  isExpired(): boolean {
-    if (!this.lastActivity) {
-      return true;
-    }
-
-    return Date.now() - this.lastActivity > this.SESSION_TIMEOUT;
-  }
-
-  async logout() {
+  async logout(): Promise<void> {
     try {
       await this.getClient().post("/pkmslogout?filename=wandlogout.html");
     } catch (error) {
-      throw new Error("Error al cerrar sesión en WAND: " + error);
+      throw new Error("Error al cerrar sesión en WAND.", { cause: error });
     } finally {
       this.clear();
     }
   }
-  // Maneja las cookies de la respuesta HTTP y actualiza el estado de la sesión
+
   private updateResponseCookies(response: AxiosResponse): void {
     this.updateCookies(response.headers["set-cookie"]);
   }

@@ -12,10 +12,10 @@ export class WandRA extends Document {
   raNum!: string;
 
   @Prop({
-    unique: true,
-    index: true,
+    type: String,
+    default: null,
   })
-  resNum!: string;
+  resNum!: string | null;
 
   @Prop()
   ldw!: string;
@@ -33,7 +33,21 @@ export class WandRA extends Document {
   totalChargesRateAmt!: string;
 
   @Prop()
-  amtDueRateAmt!: string;
+  outString!: string;
+
+  @Prop()
+  qvDiEstTotalClosed!: string;
 }
 
 export const WandSchema = SchemaFactory.createForClass(WandRA);
+
+// Índice único solamente para resNum válidos
+WandSchema.index(
+  { resNum: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      resNum: { $type: "string", $ne: "" },
+    },
+  },
+);

@@ -1,10 +1,10 @@
-import { ConfigService } from '@nestjs/config';
-import { AxiosInstance } from 'axios';
-import { AuthService } from './auth.service';
-import { SessionService } from './session.service';
+import { AxiosInstance } from "axios";
+import { AuthService } from "./auth.service";
+import { SessionService } from "./session.service";
+import { WandCredentialStore } from "./wand-credential-store.service";
 
-describe('AuthService', () => {
-  it('shares one in-flight login between concurrent callers', async () => {
+describe("AuthService", () => {
+  it("shares one in-flight login between concurrent callers", async () => {
     let resolveCheckout: (() => void) | undefined;
     const checkout = new Promise<void>((resolve) => {
       resolveCheckout = resolve;
@@ -13,12 +13,12 @@ describe('AuthService', () => {
     const post = jest
       .fn()
       .mockResolvedValueOnce({
-        data: { operation: 'login_success' },
+        data: { operation: "login_success" },
         headers: {},
         status: 200,
       })
-      .mockResolvedValueOnce({ data: { agentId: '98290' } })
-      .mockResolvedValueOnce({ data: {} });
+      .mockResolvedValueOnce({ data: { agentId: "98290" } })
+      .mockResolvedValueOnce({ data: {}, status: 200 });
     const markLoggedIn = jest.fn();
     const client = {
       get,
@@ -27,18 +27,21 @@ describe('AuthService', () => {
     const session = {
       isLogged: jest.fn(() => false),
       isSessionExpired: jest.fn(() => true),
+      getAgentId: jest.fn(() => null),
       clear: jest.fn(),
       getClient: jest.fn(() => client),
-      getStation: jest.fn(() => 'QU4'),
+      getStation: jest.fn(() => "QU4"),
       setAgentId: jest.fn(),
       markLoggedIn,
     } as unknown as SessionService;
-    const config = {
-      get: jest.fn((key: string) =>
-        key === 'WAND_USER' ? 'user' : 'password',
-      ),
-    } as unknown as ConfigService;
-    const auth = new AuthService(session, config);
+    const credentialStore = {
+      getCredentials: jest.fn(() => ({
+        username: "user",
+        password: "password",
+        lastPasswordChangedAt: null,
+      })),
+    } as unknown as WandCredentialStore;
+    const auth = new AuthService(session, credentialStore);
 
     const first = auth.login();
     const second = auth.login();
@@ -52,20 +55,20 @@ describe('AuthService', () => {
     expect(markLoggedIn).toHaveBeenCalledTimes(1);
   });
 
-  it('follows a successful WebSEAL redirect without posting credentials again', async () => {
+  it("follows a successful WebSEAL redirect without posting credentials again", async () => {
     const get = jest
       .fn()
-      .mockResolvedValueOnce({ data: { operation: 'login' }, headers: {} })
+      .mockResolvedValueOnce({ data: { operation: "login" }, headers: {} })
       .mockResolvedValueOnce({
         data: {},
         headers: {
           location:
-            'https://wand-avis.prod.avisbudget.com/wand/wandui/index.html',
+            "https://wand-avis.prod.avisbudget.com/wand/wandui/index.html",
         },
         status: 302,
       })
       .mockResolvedValueOnce({
-        data: '<html></html>',
+        data: "<html></html>",
         headers: {},
         status: 200,
       });
@@ -73,17 +76,17 @@ describe('AuthService', () => {
       .fn()
       .mockResolvedValueOnce({
         data: {
-          error_code: '0x38cf0421',
-          error_message: 'Moved Temporarily',
+          error_code: "0x38cf0421",
+          error_message: "Moved Temporarily",
         },
         headers: {
           location:
-            'https://wand-avis.prod.avisbudget.com/wand/wandui/app/wand/checkout',
+            "https://wand-avis.prod.avisbudget.com/wand/wandui/app/wand/checkout",
         },
         status: 302,
       })
-      .mockResolvedValueOnce({ data: { agentId: '98290' } })
-      .mockResolvedValueOnce({ data: {} });
+      .mockResolvedValueOnce({ data: { agentId: "98290" } })
+      .mockResolvedValueOnce({ data: {}, status: 200 });
     const markLoggedIn = jest.fn();
     const client = {
       get,
@@ -92,18 +95,21 @@ describe('AuthService', () => {
     const session = {
       isLogged: jest.fn(() => false),
       isSessionExpired: jest.fn(() => true),
+      getAgentId: jest.fn(() => null),
       clear: jest.fn(),
       getClient: jest.fn(() => client),
-      getStation: jest.fn(() => 'QU4'),
+      getStation: jest.fn(() => "QU4"),
       setAgentId: jest.fn(),
       markLoggedIn,
     } as unknown as SessionService;
-    const config = {
-      get: jest.fn((key: string) =>
-        key === 'WAND_USER' ? 'user' : 'password',
-      ),
-    } as unknown as ConfigService;
-    const auth = new AuthService(session, config);
+    const credentialStore = {
+      getCredentials: jest.fn(() => ({
+        username: "user",
+        password: "password",
+        lastPasswordChangedAt: null,
+      })),
+    } as unknown as WandCredentialStore;
+    const auth = new AuthService(session, credentialStore);
 
     const result = await auth.login();
 

@@ -1,6 +1,6 @@
 import { MongooseModule } from "@nestjs/mongoose";
-import { ServeStaticModule } from "@nestjs/serve-static";
-import { join } from "path";
+// import { ServeStaticModule } from "@nestjs/serve-static";
+// import { join } from "path";
 import { Module } from "@nestjs/common";
 
 import { WandModule } from "./wand/wand.module";
@@ -8,13 +8,13 @@ import { FleetmasModule } from "./fleetmas/fleetmas.module";
 import { SyncModule } from "./sync/sync.module";
 import { ComparisonModule } from "./comparison/comparison.module";
 import { ConfigModule } from "@nestjs/config";
-import { WpasModule } from './wpas/wpas.module';
+import { WpasModule } from "./wpas/wpas.module";
 
 @Module({
   imports: [
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, "..", "public"),
-    }),
+    // ServeStaticModule.forRoot({
+    //   rootPath: join(__dirname, "..", "public"),
+    // }),
     ConfigModule.forRoot({
       isGlobal: true, // Esto hace que no necesites importar el módulo en otros archivos
     }),

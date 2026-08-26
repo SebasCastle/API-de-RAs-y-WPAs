@@ -1,52 +1,88 @@
-import { Injectable } from "@nestjs/common";
-import { SessionService } from "./session.service";
-import { LoginResponse } from "../interface/login.interface";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { AxiosResponse } from "axios";
+import { LoginResponse, LoginResult } from "../interface/login.interface";
 import { UserResponse } from "../interface/user.interface";
+import { SessionService, WAND_BASE_URL } from "./session.service";
+import {
+  WandCredentialStore,
+  WandCredentials,
+} from "./wand-credential-store.service";
+
+interface LoginOptions {
+  username?: string;
+  password?: string;
+  force?: boolean;
+}
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly session: SessionService) {}
+  private loginInFlight: Promise<LoginResult> | null = null;
 
-  async login() {
-    if (
-      this.session.isLogged() &&
-      this.session.getAgentId() &&
-      !this.session.isExpired()
-    ) {
+  constructor(
+    private readonly session: SessionService,
+    private readonly credentialStore: WandCredentialStore,
+  ) {}
+
+  async login(options: LoginOptions = {}): Promise<LoginResult> {
+    if (!options.force && this.hasActiveSession()) {
       return {
         success: true,
         message: "Ya existe una sesión activa.",
+        logged: true,
       };
     }
 
+    const usesConfiguredCredentials = !options.username && !options.password;
+
+    if (usesConfiguredCredentials && this.loginInFlight) {
+      return this.loginInFlight;
+    }
+
+    const loginTask = this.performLogin(this.resolveCredentials(options));
+
+    if (!usesConfiguredCredentials) {
+      return loginTask;
+    }
+
+    this.loginInFlight = loginTask;
+
+    try {
+      return await this.loginInFlight;
+    } finally {
+      this.loginInFlight = null;
+    }
+  }
+
+  async ensureLogin(): Promise<void> {
+    if (this.hasActiveSession()) {
+      return;
+    }
+
+    const result = await this.login({ force: true });
+
+    if (!result.success) {
+      throw new UnauthorizedException(result.message);
+    }
+  }
+
+  private async performLogin(
+    credentials: Pick<WandCredentials, "username" | "password">,
+  ): Promise<LoginResult> {
     const client = this.session.getClient();
 
-    // checkout iniciar conexión con el cliente y obtener cookies de sesión
     this.session.clear();
-    console.log("========== CHECKOUT ==========");
-    console.log(this.session.getCookieHeader());
-    const checkout = await client.get(
-      "https://wand-avis.prod.avisbudget.com/wand/wandui/app/wand/checkout",
-    );
-    console.log(checkout.status);
-    console.dir(checkout.data, { depth: null });
 
-    // login
+    await client.get("/wand/wandui/app/wand/checkout");
 
-    const body = new URLSearchParams();
-    //construyo e lformulario de inico de sesión
-    // console.log('USER', process.env.WAND_USER);
-    // console.log('PASSWORD', process.env.WAND_PASSWORD!);
-    body.append("login-form-type", "pwd");
-    body.append("username", process.env.WAND_USER!);
-    body.append("PASSWORD", process.env.WAND_PASSWORD!);
-    // enviar login
-    console.log("========== LOGIN ==========");
-    const login = await client.post<LoginResponse>(
-      "https://wand-avis.prod.avisbudget.com/pkmslogin.form",
+    const body = new URLSearchParams({
+      "login-form-type": "pwd",
+      username: credentials.username,
+      PASSWORD: credentials.password,
+    });
 
+    const loginResponse = await client.post<LoginResponse>(
+      "/pkmslogin.form",
       body.toString(),
-
       {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -54,94 +90,138 @@ export class AuthService {
       },
     );
 
-    console.log(login.status);
-    console.dir(login.data, { depth: null });
-    console.log(this.session.getCookieHeader());
+    if (!this.isSuccessfulLoginResponse(loginResponse)) {
+      this.session.clear();
 
-    if (login.data.operation !== "login_success") {
-      // const error = new Error('Error al iniciar sesión en WAND: ');
-      // console.error(error);
-      console.log("STATUS:", login.status);
-      console.log("HEADERS:", login.headers);
-      console.dir(login.data, { depth: null });
       return {
         success: false,
-        message: "Credenciales incorrectas.",
+        message: "WAND rechazó el login o solicitó cambio de contraseña.",
+        logged: false,
       };
     }
 
-    //---------------------------------------
-    // userReq
-    //---------------------------------------
+    await this.followLoginRedirects(loginResponse);
+    await this.loadUserContext();
+    await this.selectLocation();
 
-    const userResponse = await client.post<UserResponse>("/wand/user/userReq", {
-      loc: null,
-      res: null,
-      lname: null,
-      mnemonic: null,
-    });
-    if (!userResponse.data.agentId) {
-      this.session.clear();
-      throw new Error("WAND no devolvió un agentId.");
-    }
-    this.session.setAgentId(userResponse.data.agentId);
-    // console.log('=========== USERREQ ==========');
-    // console.dir(userResponse.data, {
-    //   depth: null,
-    // });
-    // console.log('STATUS');
-    // console.log(userResponse.status);
-
-    // console.log('HEADERS');
-    // console.dir(userResponse.headers, {
-    //   depth: null,
-    // });
-
-    // console.log('BODY');
-    // console.dir(userResponse.data, {
-    //   depth: null,
-    // });
-    //---------------------------------------
-    // select location
-    //---------------------------------------
-
-    const location = await client.post(
-      "https://wand-avis.prod.avisbudget.com/wand/user/selectLocation",
-      {
-        stationMnemonic: this.session.getStation(),
-      },
-      {
-        headers: {
-          Cookie: this.session.getCookieHeader(),
-        },
-      },
-    );
-    this.session.updateCookies(location.headers["set-cookie"]);
-    if (location.status !== 200) {
-      this.session.clear();
-      throw new Error("No fue posible seleccionar la estación.");
-    }
     this.session.markLoggedIn();
 
     return {
       success: true,
       message: "Login iniciado correctamente. Esperando peticiones.",
+      logged: true,
     };
   }
 
-  async ensureLogin() {
-    console.log(this.session.getSessionInfo());
-    console.log(this.session.getCookieHeader());
+  private resolveCredentials(
+    options: LoginOptions,
+  ): Pick<WandCredentials, "username" | "password"> {
+    const configuredCredentials = this.credentialStore.getCredentials();
 
-    if (
+    return {
+      username: options.username ?? configuredCredentials.username,
+      password: options.password ?? configuredCredentials.password,
+    };
+  }
+
+  private hasActiveSession(): boolean {
+    return (
       this.session.isLogged() &&
-      this.session.getAgentId() &&
-      !this.session.isExpired()
-    ) {
-      return;
-    }
-    this.session.clear();
+      Boolean(this.session.getAgentId()) &&
+      !this.session.isSessionExpired()
+    );
+  }
 
-    return this.login();
+  private isSuccessfulLoginResponse(
+    response: AxiosResponse<LoginResponse>,
+  ): boolean {
+    return (
+      response.data?.operation === "login_success" ||
+      this.isWandRedirect(response)
+    );
+  }
+
+  private isWandRedirect(response: AxiosResponse): boolean {
+    if (response.status < 300 || response.status >= 400) {
+      return false;
+    }
+
+    const location = this.getHeader(response, "location");
+
+    if (!location) {
+      return false;
+    }
+
+    const redirectUrl = new URL(location, WAND_BASE_URL);
+
+    return redirectUrl.origin === WAND_BASE_URL;
+  }
+
+  private async followLoginRedirects(
+    response: AxiosResponse,
+    maxRedirects = 5,
+  ): Promise<void> {
+    let nextResponse = response;
+
+    for (let redirectCount = 0; redirectCount < maxRedirects; redirectCount++) {
+      if (!this.isWandRedirect(nextResponse)) {
+        return;
+      }
+
+      const location = this.getHeader(nextResponse, "location");
+
+      if (!location) {
+        return;
+      }
+
+      const redirectUrl = new URL(location, WAND_BASE_URL);
+
+      nextResponse = await this.session
+        .getClient()
+        .get(`${redirectUrl.pathname}${redirectUrl.search}`);
+    }
+
+    throw new Error("WAND excedió el límite de redirects durante login.");
+  }
+
+  private async loadUserContext(): Promise<void> {
+    const userResponse = await this.session
+      .getClient()
+      .post<UserResponse>("/wand/user/userReq", {
+        loc: null,
+        res: null,
+        lname: null,
+        mnemonic: null,
+      });
+
+    if (!userResponse.data?.agentId) {
+      this.session.clear();
+      throw new Error("WAND no devolvió un agentId.");
+    }
+
+    this.session.setAgentId(userResponse.data.agentId);
+  }
+
+  private async selectLocation(): Promise<void> {
+    const locationResponse = await this.session
+      .getClient()
+      .post("/wand/user/selectLocation", {
+        stationMnemonic: this.session.getStation(),
+      });
+
+    if (locationResponse.status !== 200) {
+      this.session.clear();
+      throw new Error("No fue posible seleccionar la estación.");
+    }
+  }
+
+  private getHeader(
+    response: AxiosResponse,
+    headerName: string,
+  ): string | null {
+    const headers = response.headers as Record<string, unknown>;
+    const value = headers[headerName];
+
+    return typeof value === "string" ? value : null;
   }
 }
