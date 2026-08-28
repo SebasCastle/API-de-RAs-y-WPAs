@@ -1,18 +1,18 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import { Document } from "mongoose";
 
 @Schema({ timestamps: true })
 export class WPA extends Document {
   @Prop({ required: true, unique: true, index: true })
   resNum!: string;
 
-  @Prop({ default: '' })
+  @Prop({ default: "" })
   wpa!: string;
 
-  @Prop({ default: 'PENDING', index: true })
+  @Prop({ default: "PENDING", index: true })
   status!: string;
 
-  @Prop({ default: '' })
+  @Prop({ default: "" })
   message!: string;
 
   @Prop({ default: 0 })

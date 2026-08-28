@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Type } from "class-transformer";
 import {
   IsArray,
   IsBoolean,
@@ -6,7 +6,7 @@ import {
   IsOptional,
   IsString,
   ValidateNested,
-} from 'class-validator';
+} from "class-validator";
 
 export class WorkerResultDto {
   @IsString()
