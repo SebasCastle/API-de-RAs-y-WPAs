@@ -1,53 +1,54 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
 
-@Schema()
-export class WandRA extends Document {
-  //id: string // como me lo da la api mongo ya sebe como luce
-  @Prop({
-    required: true,
-    unique: true,
-    index: true,
-  })
+/** Cache local de datos WAND. Reemplaza el Schema de Mongoose. */
+@Entity("wand_ras")
+export class WandRA {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Index({ unique: true })
+  @Column({ name: "ra_num", type: "varchar", length: 64 })
   raNum!: string;
 
-  @Prop({
-    type: String,
-    default: null,
-  })
+  @Index({ unique: true })
+  @Column({ name: "res_num", type: "varchar", length: 64, nullable: true })
   resNum!: string | null;
 
-  @Prop()
-  ldw!: string;
+  @Column({ type: "varchar", length: 64, nullable: true }) ldw?: string | null;
+  @Column({ type: "varchar", length: 64, nullable: true }) pai?: string | null;
+  @Column({ type: "varchar", length: 64, nullable: true }) pep?: string | null;
+  @Column({ type: "varchar", length: 64, nullable: true }) ali?: string | null;
+  @Column({
+    name: "total_charges_rate_amt",
+    type: "varchar",
+    length: 64,
+    nullable: true,
+  })
+  totalChargesRateAmt?: string | null;
+  @Column({ name: "out_string", type: "text", nullable: true }) outString?:
+    string | null;
 
-  @Prop()
-  pai!: string;
+  @Column({
+    name: "qv_di_est_total",
+    type: "varchar",
+    length: 64,
+    nullable: true,
+  })
+  qvDiEstTotal?: string | null;
 
-  @Prop()
-  pep!: string;
+  @Column({
+    name: "qv_di_est_total_closed",
+    type: "varchar",
+    length: 64,
+    nullable: true,
+  })
+  qvDiEstTotalClosed?: string | null;
 
-  @Prop()
-  ali!: string;
-
-  @Prop()
-  totalChargesRateAmt!: string;
-
-  @Prop()
-  outString!: string;
-
-  @Prop()
-  qvDiEstTotalClosed!: string;
+  @Column({
+    name: "status",
+    type: "varchar",
+    length: 64,
+    nullable: true,
+  })
+  rentalStatus?: string;
 }
-
-export const WandSchema = SchemaFactory.createForClass(WandRA);
-
-// Índice único solamente para resNum válidos
-WandSchema.index(
-  { resNum: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      resNum: { $type: "string", $ne: "" },
-    },
-  },
-);

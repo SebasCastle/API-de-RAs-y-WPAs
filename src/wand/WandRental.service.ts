@@ -3,8 +3,8 @@ import {
   BadRequestException,
   Injectable,
 } from "@nestjs/common";
-import { InjectModel } from "@nestjs/mongoose";
-import { Model } from "mongoose";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
 import { AuthService } from "./auth/auth.service";
 import { SessionService } from "./auth/session.service";
 import {
@@ -18,8 +18,8 @@ import { RentalMapper } from "./mapper/RentalMapper";
 @Injectable()
 export class WandRentalService {
   constructor(
-    @InjectModel(WandRA.name)
-    private readonly wandRaModel: Model<WandRA>,
+    @InjectRepository(WandRA)
+    private readonly wandRaRepository: Repository<WandRA>,
     private readonly authService: AuthService,
     private readonly sessionService: SessionService,
     private readonly passwordRotationService: WandPasswordRotationService,
@@ -27,14 +27,11 @@ export class WandRentalService {
 
   async login() {
     await this.passwordRotationService.rotateIfDue();
-
     return this.authService.login();
   }
-
   rotatePassword(force = false): Promise<PasswordRotationResult> {
     return this.passwordRotationService.rotateIfDue({ force });
   }
-
   getPasswordRotationStatus(): PasswordRotationResult {
     return this.passwordRotationService.getRotationStatus();
   }
@@ -42,14 +39,11 @@ export class WandRentalService {
   async findOne(ra: string): Promise<RA> {
     await this.passwordRotationService.rotateIfDue();
     await this.authService.ensureLogin();
-
     const agentId = this.sessionService.getAgentId();
-
-    if (!agentId) {
+    if (!agentId)
       throw new BadGatewayException(
         "No hay agentId activo para consultar WAND.",
       );
-    }
 
     const body = new URLSearchParams({
       raNo: ra,
@@ -58,7 +52,6 @@ export class WandRentalService {
       haveCustInfo: "false",
       fromCache: "false",
     });
-
     const response = await this.sessionService
       .getClient()
       .post<RA>("/wand/rental", body.toString(), {
@@ -73,30 +66,33 @@ export class WandRentalService {
           "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
         },
       });
-
-    if (!response.data) {
+    if (!response.data)
       throw new BadGatewayException(
         "WAND devolvió una respuesta rental vacía.",
       );
-    }
 
     const rental = RentalMapper.toDomain(response.data);
-    const existingRA = await this.wandRaModel.findOne({
+    const existing = await this.wandRaRepository.findOneBy({
       raNum: response.data.rentalData.raNum,
     });
-
-    if (!existingRA) {
-      await this.wandRaModel.create(rental.rentalData);
+    if (!existing) {
+      const values = {
+        ...rental.rentalData,
+        ...rental.qvData,
+      };
+      await this.wandRaRepository.save(
+        this.wandRaRepository.create({
+          ...values,
+          resNum: values.resNum || null,
+        }),
+      );
     }
-
     return rental;
   }
 
-  async remove(_id: string): Promise<void> {
-    const { deletedCount } = await this.wandRaModel.deleteOne({ _id });
-
-    if (deletedCount === 0) {
-      throw new BadRequestException(`RA with id "${_id}" not found`);
-    }
+  async remove(raNum: string): Promise<void> {
+    const result = await this.wandRaRepository.delete({ raNum });
+    if (!result.affected)
+      throw new BadRequestException(`RA "${raNum}" no existe.`);
   }
 }

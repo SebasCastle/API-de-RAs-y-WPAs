@@ -1,25 +1,34 @@
-import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import { Document } from "mongoose";
+import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 
-@Schema({ timestamps: true })
-export class WPA extends Document {
-  @Prop({ required: true, unique: true, index: true })
+/** Resultado persistente por reservacion. Reemplaza el Schema de Mongoose. */
+@Entity("wpas")
+export class WPA {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Index({ unique: true })
+  @Column({ name: "res_num", type: "varchar", length: 64 })
   resNum!: string;
 
-  @Prop({ default: "" })
+  @Column({ type: "varchar", length: 64, default: "" })
   wpa!: string;
 
-  @Prop({ default: "PENDING", index: true })
+  @Index()
+  @Column({ type: "varchar", length: 32, default: "PENDING" })
   status!: string;
 
-  @Prop({ default: "" })
+  @Column({ type: "text", default: "" })
   message!: string;
 
-  @Prop({ default: 0 })
+  @Column({ type: "int", default: 0 })
   attempts!: number;
 
-  @Prop()
-  processedAt?: Date;
-}
+  @Column({ name: "processed_at", type: "datetime", nullable: true })
+  processedAt?: Date | null;
 
-export const WpaSchema = SchemaFactory.createForClass(WPA);
+  @CreateDateColumn({ name: "created_at" })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: "updated_at" })
+  updatedAt!: Date;
+}

@@ -1,57 +1,154 @@
-# WPA: Nest + Worker BlueZone
+# Modulo WPAS
 
-Nest administra trabajos y resultados. El equipo Windows ejecuta BlueZone y el BAT. Nest ya no usa `spawn`, ni conoce rutas locales de Windows.
+Prefijo global de Nest: **`/api/sync`**. Base local: `http://localhost:3000/api/sync`.
+
+WPAS extrae **WPA** de reservaciones Avis en BlueZone (pantalla 502). Nest guarda jobs, logs y resultados. El BAT descarga desde Nest el script y `config.env` si no estan locales. **`bzw2h.bzlp` no se descarga nunca**: debe estar junto al BAT o en `D:\Downloads`.
 
 ## Flujo
 
-1. El cliente crea un job con `GET /wpa` o `POST /wpa/jobs`.
-2. El worker Windows envía heartbeat y reclama atómicamente `GET /wpa/worker/jobs/next?workerId=BLUEZONE-01`.
-3. BlueZone mantiene el login, menú, pantalla 502 y extracción WPA existentes.
-4. El worker hace `POST /wpa/jobs/:jobId/sync`; Nest guarda los WPA y finaliza el job.
+1. El cliente crea un job por **JSON (HTTP)** o **archivo `.txt` (FILE)**. Un job usa un solo modo.
+2. Nest guarda el job en `wpa_jobs` con `status=PENDING` y las reservaciones validadas (`24388509MX5` = 8 digitos + 2 letras + 1 digito).
+3. Si no hay worker reciente, Nest intenta arrancar `Lanzador_Bluezone.bat` (`WPAS_ACTIVATION_MODE=LOCAL` y `BLUEZONE_BAT_PATH`).
+4. El BAT crea `BlueZone\Scripts` si falta. Si no hay script o `config.env` locales, los baja de Nest y los copia a Scripts. `bzw2h.bzlp` solo se busca en local (junto al BAT o `D:\Downloads`); si no esta, error y termina.
+5. El JS reclama el job, entra a pantalla 502, pide reservaciones a Nest, extrae WPAs y hace **`POST /wpa/jobs/:jobId/sync`**. Ahi se llena `wpa_jobs.result` y las filas de `wpas`.
+6. El cliente consulta **`GET /wpa/jobs/:jobId`**: estado del job + arreglo `results` con cada WPA.
 
-`WPA` sigue siendo la entidad de resultados por reservación. `WpaJob` sólo representa la ejecución y `WpaWorker` el heartbeat/estado.
+Jobs viejos marcados `COMPLETED` con `result` NULL no tienen WPAs guardados. Hay que volver a procesarlos despues de que el JS sincronice bien.
 
-## Endpoints
+## Archivos del worker
 
-| Método | Ruta | Uso |
+| Recurso | Origen | Destino en Windows |
 |---|---|---|
-| GET | `/wpa?source=FILE` | Crea un job de desarrollo con `lista_reservaciones.txt`. |
-| POST | `/wpa/jobs` | Crea un job; para HTTP recibe `{ "source": "HTTP", "reservations": ["22974515MX4"] }`. |
-| GET | `/wpa/jobs/:jobId` | Consulta estado y resultado del job. |
-| GET | `/wpa/results?jobId=:jobId` | Consulta el resultado de un job. Sin id devuelve el último terminado. |
-| GET | `/wpa/workers` | Consulta heartbeat de workers. Un heartbeat de más de 90 segundos se considera no disponible al crear un job. |
+| `script.js` | `GET /wpa/worker/resources/script.js` (si no esta junto al BAT) | Copia a `...\BlueZone\Scripts\Script_Bluezone_a_Web (server)_AWS.js` |
+| `config.env` | `GET /wpa/worker/resources/config.env` (si no esta en `worker\config`) | Copia a `...\BlueZone\Scripts\config.env` |
+| `Lanzador_Bluezone.bat` | `GET /wpa/worker/resources/Lanzador_Bluezone.bat` | Disponible para instalar el launcher; el BAT en ejecucion no se auto-reemplaza |
+| `bzw2h.bzlp` | **Solo local.** Nest responde 400 si se pide. | Junto al BAT o `D:\Downloads\bzw2h.bzlp` (se puede copiar de Downloads al folder del BAT) |
+| `BZMD.PRO` | Instalacion BlueZone | `%USERPROFILE%\AppData\Local\Temp\BlueZone\7.1\` |
 
-Los endpoints `/wpa/worker/*` y `/wpa/jobs/:jobId/sync` son sólo para el worker. Protégelos con autenticación de servicio antes de exponerlos a Internet.
+`config.env` minimo:
 
-## Prueba local con Postman
+```env
+USERNAME=...
+PASSWORD=...
+WPAS_API_BASE=http://localhost:3000/api/sync
+WORKER_ID=
+```
 
-1. Arranca Nest con MongoDB y verifica `GET http://localhost:3000/wpa/workers`.
-2. En `worker/Script_Bluezone_a_Web (server).js`, configura `API_BASE_URL` con la URL alcanzable por la PC Windows. `localhost` sólo funciona si Nest y BlueZone están en la misma PC.
-3. Confirma `archivoPath` y deja `source=FILE`; el contenido de `lista_reservaciones.txt` se conserva para desarrollo.
-4. Crea el job: `GET http://localhost:3000/wpa?source=FILE`. Copia `jobId`.
-5. Ejecuta `worker/lanzar_wpa.bat` una vez, o `worker/worker_loop.bat` para que consulte permanentemente. El job debe pasar de `PENDING` a `RUNNING` y terminar en `COMPLETED` o `ERROR`.
-6. Consulta `GET http://localhost:3000/wpa/jobs/<jobId>` y revisa `result`.
+Si `WORKER_ID` esta vacio, BAT y JS usan `%COMPUTERNAME%`.
 
-Para probar la fuente HTTP sin cambiar BlueZone, manda:
+`AWS_AUTO_SHUTDOWN` en el BAT: `0` = pruebas (avisa apagado y sigue el loop). `1` = el BAT termina tras idle de 30s.
 
-```json
-POST /wpa/jobs
+## Tablas
+
+- **`wpa_jobs`**: id, source (`HTTP`/`FILE`), reservations (JSON), status, worker_id, fechas, **result** (payload del sync).
+- **`wpas`**: un WPA por `res_num`, con `job_id` del ultimo job que lo actualizo.
+- **`wpa_workers`**: heartbeat / status (`ONLINE`, `STARTING`, `RUNNING`, `BUSY`, `COMPLETED`, `IDLE`, `OFFLINE`, `ERROR`).
+- **`wpa_worker_logs`**: logs del BAT y del JS.
+
+## Endpoints de cliente
+
+| Metodo | Ruta | Uso |
+|---|---|---|
+| `POST` | `/wpa/jobs` | Crea job. JSON **o** multipart `.txt`, no ambos. |
+| `GET` | `/wpa/jobs/:jobId` | Job + `reservations` + `stats` + **`results[]`** (`reservacion`, `wpa`, `status`). |
+| `GET` | `/wpa/worker/logs` | Logs en BD. Query: `limit` (1-500), `level` (`INFO`/`ERROR`/…). |
+| `GET` | `/wpa/worker/status?workerId=` | Estado de un worker y si hay pendientes. |
+| `GET` | `/wpa/workers` | Lista de workers (heartbeat). |
+
+### Crear job JSON
+
+```http
+POST /api/sync/wpa/jobs
+Content-Type: application/json
+
 {
   "source": "HTTP",
-  "reservations": ["22974515MX4", "23175201US0"]
+  "reservations": ["24388509MX5", "24492636MX0"]
 }
 ```
 
-El script toma esas reservaciones de `GET /wpa/jobs/:jobId/reservations`. En producción, el siguiente paso es alimentar `reservations` desde tu fuente real (Mongo/API de reservaciones); el endpoint ya está preparado.
+### Crear job archivo
 
-## Windows: worker permanente
+`multipart/form-data`: campo `source=FILE` y campo `file` = `.txt` con una reservacion por linea.
 
-Configura Task Scheduler para ejecutar `worker/worker_loop.bat` **al iniciar sesión** del usuario que tiene BlueZone. Selecciona ejecución interactiva; BlueZone es una aplicación gráfica y no debe depender de un servicio de Windows sin sesión.
+Respuesta de alta:
 
-El loop arranca BlueZone, ejecuta un solo job y vuelve a consultar cada 15 segundos. Cambia `POLL_SECONDS` si lo necesitas. `lanzar_wpa.bat` conserva su preparación de certificados, terminal y ejecución de BlueZone.
+```json
+{ "status": "pending", "jobId": 14, "source": "HTTP", "activation": { } }
+```
 
-## Modo bajo demanda
+### Consultar WPAs de un job
 
-Cuando no hay un worker con heartbeat reciente, `WorkerActivationService` registra que el job espera un worker y devuelve una respuesta explícita: no intenta ejecutar un BAT local.
+```http
+GET /api/sync/wpa/jobs/14
+```
 
-Para completar este modo falta infraestructura externa: implementar en `worker-activation.service.ts` una llamada autenticada al proveedor que enciende la VM Windows (por ejemplo AWS EC2 `StartInstances`, Lightsail o un webhook interno). La VM debe iniciar sesión y Task Scheduler debe lanzar `worker_loop.bat`; cuando el worker envíe heartbeat, reclamará el job pendiente. No se incluyeron credenciales, IDs de instancia ni una dependencia AWS en el proyecto.
+```json
+{
+  "jobId": 14,
+  "source": "HTTP",
+  "status": "COMPLETED",
+  "workerId": "BLUEZONE-01",
+  "reservations": ["24388509MX5"],
+  "stats": { "total": 1, "correctos": 1, "noEncontrados": 0, "errores": 0 },
+  "message": "Proceso completado correctamente.",
+  "results": [
+    { "reservacion": "24388509MX5", "wpa": "ABC123", "status": "OK" }
+  ]
+}
+```
+
+## Endpoints del worker (necesarios para el BAT/JS)
+
+| Metodo | Ruta | Uso |
+|---|---|---|
+| `POST` | `/wpa/worker/heartbeat` | BAT/JS: `workerId`, `status`, opcional `jobId`. |
+| `GET` | `/wpa/worker/jobs/pending` | BAT: hay jobs `PENDING`. |
+| `GET` | `/wpa/worker/jobs/next?workerId=` | JS: reclama el siguiente job (transaccion). |
+| `GET` | `/wpa/jobs/:jobId/reservations` | JS en pantalla 502: `{ source, reservations }`. |
+| `POST` | `/wpa/jobs/:jobId/sync` | JS: guarda WPAs en `wpas` y `wpa_jobs.result`. |
+| `POST` | `/wpa/worker/logs` | BAT y JS. |
+| `POST` | `/wpa/worker/failure` | BAT: error fatal / archivo no encontrado / JS fallido. |
+| `POST` | `/wpa/worker/shutdown` | BAT: idle 30s, aviso de apagado. |
+| `GET` | `/wpa/worker/resources/script.js` | Descarga el JS BlueZone. |
+| `GET` | `/wpa/worker/resources/config.env` | Descarga credenciales/config del worker. |
+| `GET` | `/wpa/worker/resources/Lanzador_Bluezone.bat` | Descarga el launcher. |
+| `GET` | `/wpa/worker/resources/bzw2h.bzlp` | **No permitido** (400). El perfil Web-to-Host es solo local. |
+
+Body de sync (el JS lo arma):
+
+```json
+{
+  "status": "success",
+  "errorCode": 0,
+  "message": "Proceso completado correctamente.",
+  "stats": { "total": 2, "correctos": 2, "noEncontrados": 0, "errores": 0 },
+  "results": [
+    { "reservacion": "24388509MX5", "wpa": "...", "status": "OK" }
+  ]
+}
+```
+
+`status` del payload `success` deja el job en `COMPLETED`; cualquier otro valor en `ERROR`.
+
+## Variables Nest (`.env`)
+
+```env
+WPAS_ACTIVATION_MODE=LOCAL
+BLUEZONE_BAT_PATH=C:\ruta\completa\src\wpas\worker\Lanzador_Bluezone.bat
+WPAS_API_BASE=http://localhost:3000/api/sync
+WPAS_AWS_AUTO_SHUTDOWN=0
+```
+
+`WPAS_ACTIVATION_MODE=AWS` solo registra que falta StartInstances; no enciende la VM todavia.
+
+## Prueba local
+
+1. `pnpm run start` (o `start:dev`) en `sync-wand`.
+2. Deja `bzw2h.bzlp` junto al BAT o en `D:\Downloads`. El script y `config.env` se pueden bajar solos.
+3. `POST /api/sync/wpa/jobs` con 1-2 reservaciones.
+4. Esperar `RUNNING` luego `COMPLETED`.
+5. `GET /api/sync/wpa/jobs/{id}` debe traer `results` con WPAs (no solo `status`).
+6. `GET /api/sync/wpa/worker/logs` para ver BAT/JS.
+
+El loop del BAT: job → abre BlueZone Session 1 → espera COMPLETED/ERROR en Nest → **cierra BlueZone siempre** → siguiente job o idle 30s.

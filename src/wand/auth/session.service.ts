@@ -1,7 +1,10 @@
+/* eslint-disable prettier/prettier */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+
 import axios, { AxiosInstance, AxiosResponse } from "axios";
 
-export const WAND_BASE_URL = "https://wand-avis.prod.avisbudget.com";
 const SESSION_TTL_MS = 20 * 60 * 1000;
 
 @Injectable()
@@ -12,10 +15,19 @@ export class SessionService {
   private lastLogin: Date | null = null;
   private station = "QU4";
   private agentId: string | null = null;
+  private readonly wandBaseUrl: string;
 
-  constructor() {
+  constructor(configService: ConfigService) {
+    const wandBaseUrl = configService.get<string>("WAND_BASE_URL");
+
+    if (!wandBaseUrl) {
+      throw new Error(`WAND_ENDPOINT_INICIO no es una URL válida: ${JSON.stringify(wandBaseUrl)}`);
+    }
+
+    this.wandBaseUrl = wandBaseUrl;
+
     this.client = axios.create({
-      baseURL: WAND_BASE_URL,
+      baseURL: wandBaseUrl,
       withCredentials: true,
       maxRedirects: 0,
       validateStatus: (status) => status >= 200 && status < 400,
@@ -169,5 +181,9 @@ export class SessionService {
 
   private updateResponseCookies(response: AxiosResponse): void {
     this.updateCookies(response.headers["set-cookie"]);
+  }
+
+  getBaseUrl(): string {
+    return this.wandBaseUrl;
   }
 }

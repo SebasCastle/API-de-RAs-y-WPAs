@@ -1,21 +1,18 @@
 import { Module } from "@nestjs/common";
-import { MongooseModule } from "@nestjs/mongoose";
-import { WpaJob, WpaJobSchema } from "./entities/wpa-job.entity";
-import { WPA, WpaSchema } from "./entities/wpa.entity";
-import { WpaWorker, WpaWorkerSchema } from "./entities/wpa-worker.entity";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { WpaJob } from "./entities/wpa-job.entity";
+import { WPA } from "./entities/wpa.entity";
+import { WpaWorker } from "./entities/wpa-worker.entity";
+import { WpaWorkerLog } from "./entities/wpa-worker-log.entity";
 import { WpaController } from "./wpas.controller";
 import { WpasService } from "./wpas.service";
 import { WorkerActivationService } from "./worker-activation.service";
+import { AwsService } from "./aws/aws-service";
+
 @Module({
-  imports: [
-    MongooseModule.forFeature([
-      { name: WPA.name, schema: WpaSchema },
-      { name: WpaJob.name, schema: WpaJobSchema },
-      { name: WpaWorker.name, schema: WpaWorkerSchema },
-    ]),
-  ],
+  imports: [TypeOrmModule.forFeature([WPA, WpaJob, WpaWorker, WpaWorkerLog])],
   controllers: [WpaController],
-  providers: [WpasService, WorkerActivationService],
+  providers: [WpasService, WorkerActivationService, AwsService],
   exports: [WpasService],
 })
 export class WpasModule {}

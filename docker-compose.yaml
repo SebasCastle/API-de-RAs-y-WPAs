@@ -1,12 +1,23 @@
-version: '3'
-
 services:
   db:
-    image: mongo:5
+    image: mysql:8.4
     restart: always
     ports:
-      - 27017:27017
+      - 3307:3306
     environment:
-      MONGODB_DATABASE: sync-wand
+      MYSQL_DATABASE: sync_wand
+      MYSQL_USER: sync_wand
+      MYSQL_PASSWORD: sync_wand_local_password
+      MYSQL_ROOT_PASSWORD: root_local_password
     volumes:
-      - ./mongo:/data/db
+      - ./mysql:/var/lib/mysql
+
+  # Legacy MongoDB para recuperar datos locales si fuera necesario:
+  # mongo:
+  #   image: mongo:5
+  #   ports:
+  #     - 27017:27017
+  #   environment:
+  #     MONGODB_DATABASE: sync-wand
+  #   volumes:
+  #     - ./mongo:/data/db

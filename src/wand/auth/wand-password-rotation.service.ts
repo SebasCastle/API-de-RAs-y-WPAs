@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { AxiosResponse } from "axios";
 import { AuthService } from "./auth.service";
-import { SessionService, WAND_BASE_URL } from "./session.service";
+import { SessionService } from "./session.service";
 import {
   WandCredentialStore,
   WandCredentials,
@@ -213,8 +213,8 @@ export class WandPasswordRotationService {
       {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Origin: WAND_BASE_URL,
-          Referer: `${WAND_BASE_URL}${CHANGE_PASSWORD_PATH}`,
+          Origin: this.session.getBaseUrl(),
+          Referer: `${this.session.getBaseUrl()}${CHANGE_PASSWORD_PATH}`,
         },
       },
     );
@@ -288,7 +288,7 @@ export class WandPasswordRotationService {
         return nextResponse;
       }
 
-      const redirectUrl = new URL(location, WAND_BASE_URL);
+      const redirectUrl = new URL(location, this.session.getBaseUrl());
 
       nextResponse = await this.session
         .getClient()
@@ -309,7 +309,10 @@ export class WandPasswordRotationService {
       return false;
     }
 
-    return new URL(location, WAND_BASE_URL).origin === WAND_BASE_URL;
+    return (
+      new URL(location, this.session.getBaseUrl()).origin ===
+      this.session.getBaseUrl()
+    );
   }
 
   private getHeader(

@@ -6,15 +6,13 @@ export interface WpaResult {
 
 export interface WpaSyncPayload {
   status: string;
-  errorCode: number;
-  message: string;
-
-  stats: {
+  errorCode?: number;
+  message?: string;
+  stats?: {
     total: number;
     correctos: number;
     noEncontrados: number;
     errores: number;
   };
-
-  results: WpaResult[];
+  results?: WpaResult[];
 }

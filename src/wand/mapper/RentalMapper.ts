@@ -68,6 +68,8 @@ export class RentalMapper {
         ldwNotProvidedInd: rental.rentalData.ldwNotProvidedInd,
 
         awdMilesCheck: rental.rentalData.awdMilesCheck,
+
+        rentalStatus: rental.rentalData.rentalStatus,
       },
 
       qvData: {

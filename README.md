@@ -23,7 +23,12 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+API NestJS de sincronizacion Avis (`sync-wand`). Prefijo: **`/api/sync`**.
+
+Modulos de negocio:
+
+- [WPAS](src/wpas/README.md) — jobs BlueZone, extraccion de WPA, worker Windows.
+- [WAND / RAs](src/wand/README.md) — login WAND, rotacion de password, consulta y cache de rental agreements.
 
 ## Project setup
 

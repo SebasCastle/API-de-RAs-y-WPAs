@@ -38,6 +38,7 @@ export interface RentalData {
   checkOutStationCountry: string;
   ldwNotProvidedInd: string;
   awdMilesCheck: boolean;
+  rentalStatus: string;
 }
 
 export interface Req {

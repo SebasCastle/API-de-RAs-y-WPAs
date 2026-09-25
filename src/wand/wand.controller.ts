@@ -1,5 +1,4 @@
 import { Controller, Delete, Get, Param, Post, Query } from "@nestjs/common";
-import { ParseMongoIdPipe } from "src/common/pipes/parse-mongo-id.pipe";
 import { WandRentalService } from "./WandRental.service";
 
 @Controller("wand")
@@ -31,7 +30,7 @@ export class WandController {
   // }
 
   @Delete(":ra")
-  remove(@Param("ra", ParseMongoIdPipe) ra: string) {
+  remove(@Param("ra") ra: string) {
     return this.wandService.remove(ra);
   }
 }

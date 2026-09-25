@@ -1,17 +1,5 @@
-import { ArgumentMetadata, BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
-import { isValidObjectId } from 'mongoose';
-
-@Injectable()
-export class ParseMongoIdPipe implements PipeTransform {
-
-  transform(value: string, metadata: ArgumentMetadata) {
-
-    // console.log({value, metadata});
-
-    if(!isValidObjectId(value)){
-      throw new BadRequestException (`${value} is not a valid Mongo ID`)
-    }
-    
-    return value.toLocaleUpperCase();
-  }
-}
+/**
+ * Legacy MongoDB: este pipe validaba ObjectId y ya no se utiliza con MySQL.
+ * Se conserva el archivo como referencia durante la migracion.
+ */
+export {};

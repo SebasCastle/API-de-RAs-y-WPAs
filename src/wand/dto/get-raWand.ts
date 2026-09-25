@@ -1,4 +1,4 @@
-import { IsInt, IsPositive, IsString, Min, MinLength } from 'class-validator';
+import { IsInt, IsPositive, IsString, Min, MinLength } from "class-validator";
 export class getRaWand {
   @Min(1)
   @IsPositive()
@@ -31,4 +31,12 @@ export class getRaWand {
   @IsString()
   @Min(1)
   ali!: string;
+
+  @IsString()
+  @Min(1)
+  qvDiEstTotal;
+
+  @IsString()
+  @Min(1)
+  qvDiEstTotalClosed;
 }

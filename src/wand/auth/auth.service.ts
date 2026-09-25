@@ -1,12 +1,13 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { AxiosResponse } from "axios";
+import { ConfigService } from "@nestjs/config";
 import { LoginResponse, LoginResult } from "../interface/login.interface";
 import { UserResponse } from "../interface/user.interface";
-import { SessionService, WAND_BASE_URL } from "./session.service";
+import { SessionService } from "./session.service";
 import {
   WandCredentialStore,
   WandCredentials,
 } from "./wand-credential-store.service";
+import { AxiosResponse } from "axios";
 
 interface LoginOptions {
   username?: string;
@@ -17,11 +18,19 @@ interface LoginOptions {
 @Injectable()
 export class AuthService {
   private loginInFlight: Promise<LoginResult> | null = null;
-
+  private readonly wandEndpointInicio: string;
   constructor(
     private readonly session: SessionService,
     private readonly credentialStore: WandCredentialStore,
-  ) {}
+    configService: ConfigService,
+  ) {
+    const endpoint = configService.get<string>("WAND_ENDPOINT_INICIO")?.trim();
+    if (!endpoint) {
+      throw new Error("WAND_ENDPOINT_INICIO no es una URL válida:");
+    }
+
+    this.wandEndpointInicio = endpoint;
+  }
 
   async login(options: LoginOptions = {}): Promise<LoginResult> {
     if (!options.force && this.hasActiveSession()) {
@@ -71,8 +80,7 @@ export class AuthService {
     const client = this.session.getClient();
 
     this.session.clear();
-
-    await client.get("/wand/wandui/app/wand/checkout");
+    await client.get(this.wandEndpointInicio);
 
     const body = new URLSearchParams({
       "login-form-type": "pwd",
@@ -152,9 +160,9 @@ export class AuthService {
       return false;
     }
 
-    const redirectUrl = new URL(location, WAND_BASE_URL);
+    const redirectUrl = new URL(location, this.session.getBaseUrl());
 
-    return redirectUrl.origin === WAND_BASE_URL;
+    return redirectUrl.origin === this.session.getBaseUrl();
   }
 
   private async followLoginRedirects(
@@ -174,7 +182,7 @@ export class AuthService {
         return;
       }
 
-      const redirectUrl = new URL(location, WAND_BASE_URL);
+      const redirectUrl = new URL(location, this.session.getBaseUrl());
 
       nextResponse = await this.session
         .getClient()

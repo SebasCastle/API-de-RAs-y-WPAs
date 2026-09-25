@@ -44,6 +44,8 @@ export interface RentalResponse {
     ldwNotProvidedInd: string;
     awdMilesCheck: boolean;
     outString: string;
+
+    rentalStatus: string;
   };
 
   qvData: {
